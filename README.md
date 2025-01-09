@@ -1,1 +1,1 @@
-# fb_duckdb
+duckdb header files and test example for freebasic 
