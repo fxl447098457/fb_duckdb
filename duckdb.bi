@@ -1,16 +1,18 @@
 #pragma once
-#ifndef DUCKDB_API
 
+#ifndef DUCKDB_C_API
+#define DUCKDB_C_API
 #include once "crt/stdint.bi"
 #include once "crt/stddef.bi"
+
 #inclib "duckdb"
+
 extern "C"
 
-Type duckdb_type As Long
+type bool as ubyte
 
-#ifndef bool
-type  bool as long 
-#endif
+type duckdb_type as long
+
 enum
    DUCKDB_TYPE_INVALID = 0
    DUCKDB_TYPE_BOOLEAN = 1
@@ -47,8 +49,11 @@ enum
    DUCKDB_TYPE_TIME_TZ = 30
    DUCKDB_TYPE_TIMESTAMP_TZ = 31
    DUCKDB_TYPE_ANY = 34
-   DUCKDB_TYPE_VARINT = 35
+   DUCKDB_TYPE_BIGNUM = 35
    DUCKDB_TYPE_SQLNULL = 36
+   DUCKDB_TYPE_STRING_LITERAL = 37
+   DUCKDB_TYPE_INTEGER_LITERAL = 38
+   DUCKDB_TYPE_TIME_NS = 39
 end enum
 
 type duckdb_state as long
@@ -61,7 +66,7 @@ type duckdb_pending_state as long
 enum
    DUCKDB_PENDING_RESULT_READY = 0
    DUCKDB_PENDING_RESULT_NOT_READY = 1
-   DUCKDB_PENDING_ERROR = 2
+   DUCKDB_PENDING_ERROR_C = 2
    DUCKDB_PENDING_NO_TASKS_AVAILABLE = 3
 end enum
 
@@ -159,7 +164,9 @@ enum
 end enum
 
 type idx_t as ulongint
-type duckdb_delete_callback_t as sub(byval data_ as any ptr)
+type sel_t as ulong
+type duckdb_delete_callback_t as sub(byval data as any ptr)
+type duckdb_copy_callback_t as function(byval data as any ptr) as any ptr
 type duckdb_task_state as any ptr
 
 type duckdb_date
@@ -183,6 +190,10 @@ type duckdb_time_struct
    micros as long
 end type
 
+type duckdb_time_ns
+   nanos as longint
+end type
+
 type duckdb_time_tz
    bits as ulongint
 end type
@@ -199,6 +210,18 @@ end type
 type duckdb_timestamp_struct
    date as duckdb_date_struct
    time as duckdb_time_struct
+end type
+
+type duckdb_timestamp_s
+   seconds as longint
+end type
+
+type duckdb_timestamp_ms
+   millis as longint
+end type
+
+type duckdb_timestamp_ns
+   nanos as longint
 end type
 
 type duckdb_interval
@@ -232,7 +255,7 @@ end type
 type duckdb_string_t_value_pointer
    length as ulong
    prefix as zstring * 4
-   ptr_ as zstring ptr
+   ptr as zstring ptr
 end type
 
 type duckdb_string_t_value_inlined
@@ -268,14 +291,31 @@ end type
 
 type duckdb_vector as _duckdb_vector ptr
 
+type _duckdb_selection_vector
+   internal_ptr as any ptr
+end type
+
+type duckdb_selection_vector as _duckdb_selection_vector ptr
+
 type duckdb_string
-   data_ as zstring ptr
+   data as zstring ptr
    size as idx_t
 end type
 
 type duckdb_blob
-   data_ as any ptr
+   data as any ptr
    size as idx_t
+end type
+
+type duckdb_bit
+   data as ubyte ptr
+   size as idx_t
+end type
+
+type duckdb_bignum
+   data as ubyte ptr
+   size as idx_t
+   is_negative as bool
 end type
 
 type duckdb_result
@@ -286,6 +326,12 @@ type duckdb_result
    deprecated_error_message as zstring ptr
    internal_data as any ptr
 end type
+
+type _duckdb_instance_cache
+   internal_ptr as any ptr
+end type
+
+type duckdb_instance_cache as _duckdb_instance_cache ptr
 
 type _duckdb_database
    internal_ptr as any ptr
@@ -298,6 +344,12 @@ type _duckdb_connection
 end type
 
 type duckdb_connection as _duckdb_connection ptr
+
+type _duckdb_client_context
+   internal_ptr as any ptr
+end type
+
+type duckdb_client_context as _duckdb_client_context ptr
 
 type _duckdb_prepared_statement
    internal_ptr as any ptr
@@ -365,6 +417,18 @@ end type
 
 type duckdb_profiling_info as _duckdb_profiling_info ptr
 
+type _duckdb_error_data
+   internal_ptr as any ptr
+end type
+
+type duckdb_error_data as _duckdb_error_data ptr
+
+type _duckdb_expression
+   internal_ptr as any ptr
+end type
+
+type duckdb_expression as _duckdb_expression ptr
+
 type _duckdb_extension_info
    internal_ptr as any ptr
 end type
@@ -377,6 +441,12 @@ end type
 
 type duckdb_function_info as _duckdb_function_info ptr
 
+type _duckdb_bind_info
+   internal_ptr as any ptr
+end type
+
+type duckdb_bind_info as _duckdb_bind_info ptr
+
 type _duckdb_scalar_function
    internal_ptr as any ptr
 end type
@@ -388,6 +458,7 @@ type _duckdb_scalar_function_set
 end type
 
 type duckdb_scalar_function_set as _duckdb_scalar_function_set ptr
+type duckdb_scalar_function_bind_t as sub(byval info as duckdb_bind_info)
 type duckdb_scalar_function_t as sub(byval info as duckdb_function_info, byval input as duckdb_data_chunk, byval output as duckdb_vector)
 
 type _duckdb_aggregate_function
@@ -420,12 +491,6 @@ end type
 
 type duckdb_table_function as _duckdb_table_function ptr
 
-type _duckdb_bind_info
-   internal_ptr as any ptr
-end type
-
-type duckdb_bind_info as _duckdb_bind_info ptr
-
 type _duckdb_init_info
    internal_ptr as any ptr
 end type
@@ -447,13 +512,16 @@ type _duckdb_replacement_scan_info
 end type
 
 type duckdb_replacement_scan_info as _duckdb_replacement_scan_info ptr
-type duckdb_replacement_callback_t as sub(byval info as duckdb_replacement_scan_info, byval table_name as const zstring ptr, byval data_ as any ptr)
+type duckdb_replacement_callback_t as sub(byval info as duckdb_replacement_scan_info, byval table_name as const zstring ptr, byval data as any ptr)
+
+Type ArrowArray As Any Ptr
+Type ArrowSchema As Any Ptr
 
 type _duckdb_arrow
    internal_ptr as any ptr
 end type
 
-type duckdb_arrow as _duckdb_arrow ptr
+Type duckdb_arrow As _duckdb_arrow Ptr
 
 type _duckdb_arrow_stream
    internal_ptr as any ptr
@@ -467,18 +535,33 @@ end type
 
 type duckdb_arrow_schema as _duckdb_arrow_schema ptr
 
+type _duckdb_arrow_converted_schema
+   internal_ptr as any ptr
+end type
+
+type duckdb_arrow_converted_schema as _duckdb_arrow_converted_schema ptr
+
 type _duckdb_arrow_array
    internal_ptr as any ptr
 end type
 
 type duckdb_arrow_array as _duckdb_arrow_array ptr
 
+type _duckdb_arrow_options
+   internal_ptr as any ptr
+end type
+
+type duckdb_arrow_options as _duckdb_arrow_options ptr
+
 type duckdb_extension_access
-   set_error as sub(byval info as duckdb_extension_info, byval error_ as const zstring ptr)
+   set_error as sub(byval info as duckdb_extension_info, byval error as const zstring ptr)
    get_database as function(byval info as duckdb_extension_info) as duckdb_database ptr
    get_api as function(byval info as duckdb_extension_info, byval version as const zstring ptr) as const any ptr
 end type
 
+declare function duckdb_create_instance_cache() as duckdb_instance_cache
+declare function duckdb_get_or_create_from_cache(byval instance_cache as duckdb_instance_cache, byval path as const zstring ptr, byval out_database as duckdb_database ptr, byval config as duckdb_config, byval out_error as zstring ptr ptr) as duckdb_state
+declare sub duckdb_destroy_instance_cache(byval instance_cache as duckdb_instance_cache ptr)
 declare function duckdb_open(byval path as const zstring ptr, byval out_database as duckdb_database ptr) as duckdb_state
 declare function duckdb_open_ext(byval path as const zstring ptr, byval out_database as duckdb_database ptr, byval config as duckdb_config, byval out_error as zstring ptr ptr) as duckdb_state
 declare sub duckdb_close(byval database as duckdb_database ptr)
@@ -486,18 +569,30 @@ declare function duckdb_connect(byval database as duckdb_database, byval out_con
 declare sub duckdb_interrupt(byval connection as duckdb_connection)
 declare function duckdb_query_progress(byval connection as duckdb_connection) as duckdb_query_progress_type
 declare sub duckdb_disconnect(byval connection as duckdb_connection ptr)
+declare sub duckdb_connection_get_client_context(byval connection as duckdb_connection, byval out_context as duckdb_client_context ptr)
+declare sub duckdb_connection_get_arrow_options(byval connection as duckdb_connection, byval out_arrow_options as duckdb_arrow_options ptr)
+declare function duckdb_client_context_get_connection_id(byval context as duckdb_client_context) as idx_t
+declare sub duckdb_destroy_client_context(byval context as duckdb_client_context ptr)
+declare sub duckdb_destroy_arrow_options(byval arrow_options as duckdb_arrow_options ptr)
 declare function duckdb_library_version() as const zstring ptr
+declare function duckdb_get_table_names(byval connection as duckdb_connection, byval query as const zstring ptr, byval qualified as bool) as duckdb_value
 declare function duckdb_create_config(byval out_config as duckdb_config ptr) as duckdb_state
 declare function duckdb_config_count() as uinteger
 declare function duckdb_get_config_flag(byval index as uinteger, byval out_name as const zstring ptr ptr, byval out_description as const zstring ptr ptr) as duckdb_state
-declare function duckdb_set_config(byval config as duckdb_config, byval name_ as const zstring ptr, byval option as const zstring ptr) as duckdb_state
+declare function duckdb_set_config(byval config as duckdb_config, byval name as const zstring ptr, byval option as const zstring ptr) as duckdb_state
 declare sub duckdb_destroy_config(byval config as duckdb_config ptr)
+declare function duckdb_create_error_data(byval type as duckdb_error_type, byval message as const zstring ptr) as duckdb_error_data
+declare sub duckdb_destroy_error_data(byval error_data as duckdb_error_data ptr)
+declare function duckdb_error_data_error_type(byval error_data as duckdb_error_data) as duckdb_error_type
+declare function duckdb_error_data_message(byval error_data as duckdb_error_data) as const zstring ptr
+declare function duckdb_error_data_has_error(byval error_data as duckdb_error_data) as bool
 declare function duckdb_query(byval connection as duckdb_connection, byval query as const zstring ptr, byval out_result as duckdb_result ptr) as duckdb_state
 declare sub duckdb_destroy_result(byval result as duckdb_result ptr)
 declare function duckdb_column_name(byval result as duckdb_result ptr, byval col as idx_t) as const zstring ptr
 declare function duckdb_column_type(byval result as duckdb_result ptr, byval col as idx_t) as duckdb_type
 declare function duckdb_result_statement_type(byval result as duckdb_result) as duckdb_statement_type
 declare function duckdb_column_logical_type(byval result as duckdb_result ptr, byval col as idx_t) as duckdb_logical_type
+declare function duckdb_result_get_arrow_options(byval result as duckdb_result ptr) as duckdb_arrow_options
 declare function duckdb_column_count(byval result as duckdb_result ptr) as idx_t
 declare function duckdb_row_count(byval result as duckdb_result ptr) as idx_t
 declare function duckdb_rows_changed(byval result as duckdb_result ptr) as idx_t
@@ -534,7 +629,7 @@ declare function duckdb_value_string_internal(byval result as duckdb_result ptr,
 declare function duckdb_value_blob(byval result as duckdb_result ptr, byval col as idx_t, byval row as idx_t) as duckdb_blob
 declare function duckdb_value_is_null(byval result as duckdb_result ptr, byval col as idx_t, byval row as idx_t) as bool
 declare function duckdb_malloc(byval size as uinteger) as any ptr
-declare sub duckdb_free(byval ptr_ as any ptr)
+declare sub duckdb_free(byval ptr as any ptr)
 declare function duckdb_vector_size() as idx_t
 declare function duckdb_string_is_inlined(byval string as duckdb_string_t) as bool
 declare function duckdb_string_t_length(byval string as duckdb_string_t) as ulong
@@ -549,44 +644,52 @@ declare function duckdb_to_time(byval time as duckdb_time_struct) as duckdb_time
 declare function duckdb_from_timestamp(byval ts as duckdb_timestamp) as duckdb_timestamp_struct
 declare function duckdb_to_timestamp(byval ts as duckdb_timestamp_struct) as duckdb_timestamp
 declare function duckdb_is_finite_timestamp(byval ts as duckdb_timestamp) as bool
-declare function duckdb_hugeint_to_double(byval val_ as duckdb_hugeint) as double
-declare function duckdb_double_to_hugeint(byval val_ as double) as duckdb_hugeint
-declare function duckdb_uhugeint_to_double(byval val_ as duckdb_uhugeint) as double
-declare function duckdb_double_to_uhugeint(byval val_ as double) as duckdb_uhugeint
-declare function duckdb_double_to_decimal(byval val_ as double, byval width as ubyte, byval scale as ubyte) as duckdb_decimal
-declare function duckdb_decimal_to_double(byval val_ as duckdb_decimal) as double
+declare function duckdb_is_finite_timestamp_s(byval ts as duckdb_timestamp_s) as bool
+declare function duckdb_is_finite_timestamp_ms(byval ts as duckdb_timestamp_ms) as bool
+declare function duckdb_is_finite_timestamp_ns(byval ts as duckdb_timestamp_ns) as bool
+declare function duckdb_hugeint_to_double(byval val as duckdb_hugeint) as double
+declare function duckdb_double_to_hugeint(byval val as double) as duckdb_hugeint
+declare function duckdb_uhugeint_to_double(byval val as duckdb_uhugeint) as double
+declare function duckdb_double_to_uhugeint(byval val as double) as duckdb_uhugeint
+declare function duckdb_double_to_decimal(byval val as double, byval width as ubyte, byval scale as ubyte) as duckdb_decimal
+declare function duckdb_decimal_to_double(byval val as duckdb_decimal) as double
 declare function duckdb_prepare(byval connection as duckdb_connection, byval query as const zstring ptr, byval out_prepared_statement as duckdb_prepared_statement ptr) as duckdb_state
 declare sub duckdb_destroy_prepare(byval prepared_statement as duckdb_prepared_statement ptr)
 declare function duckdb_prepare_error(byval prepared_statement as duckdb_prepared_statement) as const zstring ptr
 declare function duckdb_nparams(byval prepared_statement as duckdb_prepared_statement) as idx_t
 declare function duckdb_parameter_name(byval prepared_statement as duckdb_prepared_statement, byval index as idx_t) as const zstring ptr
 declare function duckdb_param_type(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t) as duckdb_type
+declare function duckdb_param_logical_type(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t) as duckdb_logical_type
 declare function duckdb_clear_bindings(byval prepared_statement as duckdb_prepared_statement) as duckdb_state
 declare function duckdb_prepared_statement_type(byval statement as duckdb_prepared_statement) as duckdb_statement_type
-declare function duckdb_bind_value(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_value) as duckdb_state
-declare function duckdb_bind_parameter_index(byval prepared_statement as duckdb_prepared_statement, byval param_idx_out as idx_t ptr, byval name_ as const zstring ptr) as duckdb_state
-declare function duckdb_bind_boolean(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as bool) as duckdb_state
-declare function duckdb_bind_int8(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as byte) as duckdb_state
-declare function duckdb_bind_int16(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as short) as duckdb_state
-declare function duckdb_bind_int32(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as long) as duckdb_state
-declare function duckdb_bind_int64(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as longint) as duckdb_state
-declare function duckdb_bind_hugeint(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_hugeint) as duckdb_state
-declare function duckdb_bind_uhugeint(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_uhugeint) as duckdb_state
-declare function duckdb_bind_decimal(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_decimal) as duckdb_state
-declare function duckdb_bind_uint8(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as ubyte) as duckdb_state
-declare function duckdb_bind_uint16(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as ushort) as duckdb_state
-declare function duckdb_bind_uint32(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as ulong) as duckdb_state
-declare function duckdb_bind_uint64(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as ulongint) as duckdb_state
-declare function duckdb_bind_float(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as single) as duckdb_state
-declare function duckdb_bind_double(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as double) as duckdb_state
-declare function duckdb_bind_date(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_date) as duckdb_state
-declare function duckdb_bind_time(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_time) as duckdb_state
-declare function duckdb_bind_timestamp(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_timestamp) as duckdb_state
-declare function duckdb_bind_timestamp_tz(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_timestamp) as duckdb_state
-declare function duckdb_bind_interval(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as duckdb_interval) as duckdb_state
-declare function duckdb_bind_varchar(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as const zstring ptr) as duckdb_state
-declare function duckdb_bind_varchar_length(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val_ as const zstring ptr, byval length as idx_t) as duckdb_state
-declare function duckdb_bind_blob(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval data_ as const any ptr, byval length as idx_t) as duckdb_state
+declare function duckdb_prepared_statement_column_count(byval prepared_statement as duckdb_prepared_statement) as idx_t
+declare function duckdb_prepared_statement_column_name(byval prepared_statement as duckdb_prepared_statement, byval col_idx as idx_t) as const zstring ptr
+declare function duckdb_prepared_statement_column_logical_type(byval prepared_statement as duckdb_prepared_statement, byval col_idx as idx_t) as duckdb_logical_type
+declare function duckdb_prepared_statement_column_type(byval prepared_statement as duckdb_prepared_statement, byval col_idx as idx_t) as duckdb_type
+declare function duckdb_bind_value(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_value) as duckdb_state
+declare function duckdb_bind_parameter_index(byval prepared_statement as duckdb_prepared_statement, byval param_idx_out as idx_t ptr, byval name as const zstring ptr) as duckdb_state
+declare function duckdb_bind_boolean(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as bool) as duckdb_state
+declare function duckdb_bind_int8(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as byte) as duckdb_state
+declare function duckdb_bind_int16(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as short) as duckdb_state
+declare function duckdb_bind_int32(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as long) as duckdb_state
+declare function duckdb_bind_int64(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as longint) as duckdb_state
+declare function duckdb_bind_hugeint(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_hugeint) as duckdb_state
+declare function duckdb_bind_uhugeint(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_uhugeint) as duckdb_state
+declare function duckdb_bind_decimal(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_decimal) as duckdb_state
+declare function duckdb_bind_uint8(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as ubyte) as duckdb_state
+declare function duckdb_bind_uint16(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as ushort) as duckdb_state
+declare function duckdb_bind_uint32(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as ulong) as duckdb_state
+declare function duckdb_bind_uint64(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as ulongint) as duckdb_state
+declare function duckdb_bind_float(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as single) as duckdb_state
+declare function duckdb_bind_double(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as double) as duckdb_state
+declare function duckdb_bind_date(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_date) as duckdb_state
+declare function duckdb_bind_time(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_time) as duckdb_state
+declare function duckdb_bind_timestamp(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_timestamp) as duckdb_state
+declare function duckdb_bind_timestamp_tz(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_timestamp) as duckdb_state
+declare function duckdb_bind_interval(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as duckdb_interval) as duckdb_state
+declare function duckdb_bind_varchar(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as const zstring ptr) as duckdb_state
+declare function duckdb_bind_varchar_length(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval val as const zstring ptr, byval length as idx_t) as duckdb_state
+declare function duckdb_bind_blob(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t, byval data as const any ptr, byval length as idx_t) as duckdb_state
 declare function duckdb_bind_null(byval prepared_statement as duckdb_prepared_statement, byval param_idx as idx_t) as duckdb_state
 declare function duckdb_execute_prepared(byval prepared_statement as duckdb_prepared_statement, byval out_result as duckdb_result ptr) as duckdb_state
 declare function duckdb_execute_prepared_streaming(byval prepared_statement as duckdb_prepared_statement, byval out_result as duckdb_result ptr) as duckdb_state
@@ -596,8 +699,8 @@ declare function duckdb_extract_statements_error(byval extracted_statements as d
 declare sub duckdb_destroy_extracted(byval extracted_statements as duckdb_extracted_statements ptr)
 declare function duckdb_pending_prepared(byval prepared_statement as duckdb_prepared_statement, byval out_result as duckdb_pending_result ptr) as duckdb_state
 declare function duckdb_pending_prepared_streaming(byval prepared_statement as duckdb_prepared_statement, byval out_result as duckdb_pending_result ptr) as duckdb_state
-declare sub duckdb_destroy_pending(byval pending_result as duckdb_pending_result ptr)
-
+Declare Sub duckdb_destroy_pending(ByVal pending_result As duckdb_pending_result Ptr)
+Declare Function duckdb_pending_error(ByVal pending_result As duckdb_pending_result) As Const ZString Ptr
 declare function duckdb_pending_execute_task(byval pending_result as duckdb_pending_result) as duckdb_pending_state
 declare function duckdb_pending_execute_check_state(byval pending_result as duckdb_pending_result) as duckdb_pending_state
 declare function duckdb_execute_pending(byval pending_result as duckdb_pending_result, byval out_result as duckdb_result ptr) as duckdb_state
@@ -613,74 +716,102 @@ declare function duckdb_create_uint16(byval input as ushort) as duckdb_value
 declare function duckdb_create_int32(byval input as long) as duckdb_value
 declare function duckdb_create_uint32(byval input as ulong) as duckdb_value
 declare function duckdb_create_uint64(byval input as ulongint) as duckdb_value
-declare function duckdb_create_int64(byval val_ as longint) as duckdb_value
+declare function duckdb_create_int64(byval val as longint) as duckdb_value
 declare function duckdb_create_hugeint(byval input as duckdb_hugeint) as duckdb_value
 declare function duckdb_create_uhugeint(byval input as duckdb_uhugeint) as duckdb_value
+declare function duckdb_create_bignum(byval input as duckdb_bignum) as duckdb_value
+declare function duckdb_create_decimal(byval input as duckdb_decimal) as duckdb_value
 declare function duckdb_create_float(byval input as single) as duckdb_value
 declare function duckdb_create_double(byval input as double) as duckdb_value
 declare function duckdb_create_date(byval input as duckdb_date) as duckdb_value
 declare function duckdb_create_time(byval input as duckdb_time) as duckdb_value
+declare function duckdb_create_time_ns(byval input as duckdb_time_ns) as duckdb_value
 declare function duckdb_create_time_tz_value(byval value as duckdb_time_tz) as duckdb_value
 declare function duckdb_create_timestamp(byval input as duckdb_timestamp) as duckdb_value
+declare function duckdb_create_timestamp_tz(byval input as duckdb_timestamp) as duckdb_value
+declare function duckdb_create_timestamp_s(byval input as duckdb_timestamp_s) as duckdb_value
+declare function duckdb_create_timestamp_ms(byval input as duckdb_timestamp_ms) as duckdb_value
+declare function duckdb_create_timestamp_ns(byval input as duckdb_timestamp_ns) as duckdb_value
 declare function duckdb_create_interval(byval input as duckdb_interval) as duckdb_value
-declare function duckdb_create_blob(byval data_ as const ubyte ptr, byval length as idx_t) as duckdb_value
-declare function duckdb_get_bool(byval val_ as duckdb_value) as bool
-declare function duckdb_get_int8(byval val_ as duckdb_value) as byte
-declare function duckdb_get_uint8(byval val_ as duckdb_value) as ubyte
-declare function duckdb_get_int16(byval val_ as duckdb_value) as short
-declare function duckdb_get_uint16(byval val_ as duckdb_value) as ushort
-declare function duckdb_get_int32(byval val_ as duckdb_value) as long
-declare function duckdb_get_uint32(byval val_ as duckdb_value) as ulong
-declare function duckdb_get_int64(byval val_ as duckdb_value) as longint
-declare function duckdb_get_uint64(byval val_ as duckdb_value) as ulongint
-declare function duckdb_get_hugeint(byval val_ as duckdb_value) as duckdb_hugeint
-declare function duckdb_get_uhugeint(byval val_ as duckdb_value) as duckdb_uhugeint
-declare function duckdb_get_float(byval val_ as duckdb_value) as single
-declare function duckdb_get_double(byval val_ as duckdb_value) as double
-declare function duckdb_get_date(byval val_ as duckdb_value) as duckdb_date
-declare function duckdb_get_time(byval val_ as duckdb_value) as duckdb_time
-declare function duckdb_get_time_tz(byval val_ as duckdb_value) as duckdb_time_tz
-declare function duckdb_get_timestamp(byval val_ as duckdb_value) as duckdb_timestamp
-declare function duckdb_get_interval(byval val_ as duckdb_value) as duckdb_interval
-declare function duckdb_get_value_type(byval val_ as duckdb_value) as duckdb_logical_type
-declare function duckdb_get_blob(byval val_ as duckdb_value) as duckdb_blob
+declare function duckdb_create_blob(byval data as const ubyte ptr, byval length as idx_t) as duckdb_value
+declare function duckdb_create_bit(byval input as duckdb_bit) as duckdb_value
+declare function duckdb_create_uuid(byval input as duckdb_uhugeint) as duckdb_value
+declare function duckdb_get_bool(byval val as duckdb_value) as bool
+declare function duckdb_get_int8(byval val as duckdb_value) as byte
+declare function duckdb_get_uint8(byval val as duckdb_value) as ubyte
+declare function duckdb_get_int16(byval val as duckdb_value) as short
+declare function duckdb_get_uint16(byval val as duckdb_value) as ushort
+declare function duckdb_get_int32(byval val as duckdb_value) as long
+declare function duckdb_get_uint32(byval val as duckdb_value) as ulong
+declare function duckdb_get_int64(byval val as duckdb_value) as longint
+declare function duckdb_get_uint64(byval val as duckdb_value) as ulongint
+declare function duckdb_get_hugeint(byval val as duckdb_value) as duckdb_hugeint
+declare function duckdb_get_uhugeint(byval val as duckdb_value) as duckdb_uhugeint
+declare function duckdb_get_bignum(byval val as duckdb_value) as duckdb_bignum
+declare function duckdb_get_decimal(byval val as duckdb_value) as duckdb_decimal
+declare function duckdb_get_float(byval val as duckdb_value) as single
+declare function duckdb_get_double(byval val as duckdb_value) as double
+declare function duckdb_get_date(byval val as duckdb_value) as duckdb_date
+declare function duckdb_get_time(byval val as duckdb_value) as duckdb_time
+declare function duckdb_get_time_ns(byval val as duckdb_value) as duckdb_time_ns
+declare function duckdb_get_time_tz(byval val as duckdb_value) as duckdb_time_tz
+declare function duckdb_get_timestamp(byval val as duckdb_value) as duckdb_timestamp
+declare function duckdb_get_timestamp_tz(byval val as duckdb_value) as duckdb_timestamp
+declare function duckdb_get_timestamp_s(byval val as duckdb_value) as duckdb_timestamp_s
+declare function duckdb_get_timestamp_ms(byval val as duckdb_value) as duckdb_timestamp_ms
+declare function duckdb_get_timestamp_ns(byval val as duckdb_value) as duckdb_timestamp_ns
+declare function duckdb_get_interval(byval val as duckdb_value) as duckdb_interval
+declare function duckdb_get_value_type(byval val as duckdb_value) as duckdb_logical_type
+declare function duckdb_get_blob(byval val as duckdb_value) as duckdb_blob
+declare function duckdb_get_bit(byval val as duckdb_value) as duckdb_bit
+declare function duckdb_get_uuid(byval val as duckdb_value) as duckdb_uhugeint
 declare function duckdb_get_varchar(byval value as duckdb_value) as zstring ptr
-declare function duckdb_create_struct_value(byval type_ as duckdb_logical_type, byval values as duckdb_value ptr) as duckdb_value
-declare function duckdb_create_list_value(byval type_ as duckdb_logical_type, byval values as duckdb_value ptr, byval value_count as idx_t) as duckdb_value
-declare function duckdb_create_array_value(byval type_ as duckdb_logical_type, byval values as duckdb_value ptr, byval value_count as idx_t) as duckdb_value
+declare function duckdb_create_struct_value(byval type as duckdb_logical_type, byval values as duckdb_value ptr) as duckdb_value
+declare function duckdb_create_list_value(byval type as duckdb_logical_type, byval values as duckdb_value ptr, byval value_count as idx_t) as duckdb_value
+declare function duckdb_create_array_value(byval type as duckdb_logical_type, byval values as duckdb_value ptr, byval value_count as idx_t) as duckdb_value
+declare function duckdb_create_map_value(byval map_type as duckdb_logical_type, byval keys as duckdb_value ptr, byval values as duckdb_value ptr, byval entry_count as idx_t) as duckdb_value
+declare function duckdb_create_union_value(byval union_type as duckdb_logical_type, byval tag_index as idx_t, byval value as duckdb_value) as duckdb_value
 declare function duckdb_get_map_size(byval value as duckdb_value) as idx_t
 declare function duckdb_get_map_key(byval value as duckdb_value, byval index as idx_t) as duckdb_value
 declare function duckdb_get_map_value(byval value as duckdb_value, byval index as idx_t) as duckdb_value
-declare function duckdb_create_logical_type(byval type_ as duckdb_type) as duckdb_logical_type
-declare function duckdb_logical_type_get_alias(byval type_ as duckdb_logical_type) as zstring ptr
-declare sub duckdb_logical_type_set_alias(byval type_ as duckdb_logical_type, byval alias as const zstring ptr)
-declare function duckdb_create_list_type(byval type_ as duckdb_logical_type) as duckdb_logical_type
-declare function duckdb_create_array_type(byval type_ as duckdb_logical_type, byval array_size as idx_t) as duckdb_logical_type
+declare function duckdb_is_null_value(byval value as duckdb_value) as bool
+declare function duckdb_create_null_value() as duckdb_value
+declare function duckdb_get_list_size(byval value as duckdb_value) as idx_t
+declare function duckdb_get_list_child(byval value as duckdb_value, byval index as idx_t) as duckdb_value
+declare function duckdb_create_enum_value(byval type as duckdb_logical_type, byval value as ulongint) as duckdb_value
+declare function duckdb_get_enum_value(byval value as duckdb_value) as ulongint
+declare function duckdb_get_struct_child(byval value as duckdb_value, byval index as idx_t) as duckdb_value
+declare function duckdb_value_to_string(byval value as duckdb_value) as zstring ptr
+declare function duckdb_create_logical_type(byval type as duckdb_type) as duckdb_logical_type
+declare function duckdb_logical_type_get_alias(byval type as duckdb_logical_type) as zstring ptr
+declare sub duckdb_logical_type_set_alias(byval type as duckdb_logical_type, byval alias as const zstring ptr)
+declare function duckdb_create_list_type(byval type as duckdb_logical_type) as duckdb_logical_type
+declare function duckdb_create_array_type(byval type as duckdb_logical_type, byval array_size as idx_t) as duckdb_logical_type
 declare function duckdb_create_map_type(byval key_type as duckdb_logical_type, byval value_type as duckdb_logical_type) as duckdb_logical_type
 declare function duckdb_create_union_type(byval member_types as duckdb_logical_type ptr, byval member_names as const zstring ptr ptr, byval member_count as idx_t) as duckdb_logical_type
 declare function duckdb_create_struct_type(byval member_types as duckdb_logical_type ptr, byval member_names as const zstring ptr ptr, byval member_count as idx_t) as duckdb_logical_type
 declare function duckdb_create_enum_type(byval member_names as const zstring ptr ptr, byval member_count as idx_t) as duckdb_logical_type
 declare function duckdb_create_decimal_type(byval width as ubyte, byval scale as ubyte) as duckdb_logical_type
-declare function duckdb_get_type_id(byval type_ as duckdb_logical_type) as duckdb_type
-declare function duckdb_decimal_width(byval type_ as duckdb_logical_type) as ubyte
-declare function duckdb_decimal_scale(byval type_ as duckdb_logical_type) as ubyte
-declare function duckdb_decimal_internal_type(byval type_ as duckdb_logical_type) as duckdb_type
-declare function duckdb_enum_internal_type(byval type_ as duckdb_logical_type) as duckdb_type
-declare function duckdb_enum_dictionary_size(byval type_ as duckdb_logical_type) as ulong
-declare function duckdb_enum_dictionary_value(byval type_ as duckdb_logical_type, byval index as idx_t) as zstring ptr
-declare function duckdb_list_type_child_type(byval type_ as duckdb_logical_type) as duckdb_logical_type
-declare function duckdb_array_type_child_type(byval type_ as duckdb_logical_type) as duckdb_logical_type
-declare function duckdb_array_type_array_size(byval type_ as duckdb_logical_type) as idx_t
-declare function duckdb_map_type_key_type(byval type_ as duckdb_logical_type) as duckdb_logical_type
-declare function duckdb_map_type_value_type(byval type_ as duckdb_logical_type) as duckdb_logical_type
-declare function duckdb_struct_type_child_count(byval type_ as duckdb_logical_type) as idx_t
-declare function duckdb_struct_type_child_name(byval type_ as duckdb_logical_type, byval index as idx_t) as zstring ptr
-declare function duckdb_struct_type_child_type(byval type_ as duckdb_logical_type, byval index as idx_t) as duckdb_logical_type
-declare function duckdb_union_type_member_count(byval type_ as duckdb_logical_type) as idx_t
-declare function duckdb_union_type_member_name(byval type_ as duckdb_logical_type, byval index as idx_t) as zstring ptr
-declare function duckdb_union_type_member_type(byval type_ as duckdb_logical_type, byval index as idx_t) as duckdb_logical_type
-declare sub duckdb_destroy_logical_type(byval type_ as duckdb_logical_type ptr)
-declare function duckdb_register_logical_type(byval con as duckdb_connection, byval type_ as duckdb_logical_type, byval info as duckdb_create_type_info) as duckdb_state
+declare function duckdb_get_type_id(byval type as duckdb_logical_type) as duckdb_type
+declare function duckdb_decimal_width(byval type as duckdb_logical_type) as ubyte
+declare function duckdb_decimal_scale(byval type as duckdb_logical_type) as ubyte
+declare function duckdb_decimal_internal_type(byval type as duckdb_logical_type) as duckdb_type
+declare function duckdb_enum_internal_type(byval type as duckdb_logical_type) as duckdb_type
+declare function duckdb_enum_dictionary_size(byval type as duckdb_logical_type) as ulong
+declare function duckdb_enum_dictionary_value(byval type as duckdb_logical_type, byval index as idx_t) as zstring ptr
+declare function duckdb_list_type_child_type(byval type as duckdb_logical_type) as duckdb_logical_type
+declare function duckdb_array_type_child_type(byval type as duckdb_logical_type) as duckdb_logical_type
+declare function duckdb_array_type_array_size(byval type as duckdb_logical_type) as idx_t
+declare function duckdb_map_type_key_type(byval type as duckdb_logical_type) as duckdb_logical_type
+declare function duckdb_map_type_value_type(byval type as duckdb_logical_type) as duckdb_logical_type
+declare function duckdb_struct_type_child_count(byval type as duckdb_logical_type) as idx_t
+declare function duckdb_struct_type_child_name(byval type as duckdb_logical_type, byval index as idx_t) as zstring ptr
+declare function duckdb_struct_type_child_type(byval type as duckdb_logical_type, byval index as idx_t) as duckdb_logical_type
+declare function duckdb_union_type_member_count(byval type as duckdb_logical_type) as idx_t
+declare function duckdb_union_type_member_name(byval type as duckdb_logical_type, byval index as idx_t) as zstring ptr
+declare function duckdb_union_type_member_type(byval type as duckdb_logical_type, byval index as idx_t) as duckdb_logical_type
+declare sub duckdb_destroy_logical_type(byval type as duckdb_logical_type ptr)
+declare function duckdb_register_logical_type(byval con as duckdb_connection, byval type as duckdb_logical_type, byval info as duckdb_create_type_info) as duckdb_state
 declare function duckdb_create_data_chunk(byval types as duckdb_logical_type ptr, byval column_count as idx_t) as duckdb_data_chunk
 declare sub duckdb_destroy_data_chunk(byval chunk as duckdb_data_chunk ptr)
 declare sub duckdb_data_chunk_reset(byval chunk as duckdb_data_chunk)
@@ -688,60 +819,78 @@ declare function duckdb_data_chunk_get_column_count(byval chunk as duckdb_data_c
 declare function duckdb_data_chunk_get_vector(byval chunk as duckdb_data_chunk, byval col_idx as idx_t) as duckdb_vector
 declare function duckdb_data_chunk_get_size(byval chunk as duckdb_data_chunk) as idx_t
 declare sub duckdb_data_chunk_set_size(byval chunk as duckdb_data_chunk, byval size as idx_t)
+declare function duckdb_create_vector(byval type as duckdb_logical_type, byval capacity as idx_t) as duckdb_vector
+declare sub duckdb_destroy_vector(byval vector as duckdb_vector ptr)
 declare function duckdb_vector_get_column_type(byval vector as duckdb_vector) as duckdb_logical_type
 declare function duckdb_vector_get_data(byval vector as duckdb_vector) as any ptr
 declare function duckdb_vector_get_validity(byval vector as duckdb_vector) as ulongint ptr
 declare sub duckdb_vector_ensure_validity_writable(byval vector as duckdb_vector)
-declare sub duckdb_vector_assign_string_element(byval vector as duckdb_vector, byval index as idx_t, byval str_ as const zstring ptr)
-declare sub duckdb_vector_assign_string_element_len(byval vector as duckdb_vector, byval index as idx_t, byval str_ as const zstring ptr, byval str_len as idx_t)
+declare sub duckdb_vector_assign_string_element(byval vector as duckdb_vector, byval index as idx_t, byval str as const zstring ptr)
+declare sub duckdb_vector_assign_string_element_len(byval vector as duckdb_vector, byval index as idx_t, byval str as const zstring ptr, byval str_len as idx_t)
 declare function duckdb_list_vector_get_child(byval vector as duckdb_vector) as duckdb_vector
 declare function duckdb_list_vector_get_size(byval vector as duckdb_vector) as idx_t
 declare function duckdb_list_vector_set_size(byval vector as duckdb_vector, byval size as idx_t) as duckdb_state
 declare function duckdb_list_vector_reserve(byval vector as duckdb_vector, byval required_capacity as idx_t) as duckdb_state
 declare function duckdb_struct_vector_get_child(byval vector as duckdb_vector, byval index as idx_t) as duckdb_vector
 declare function duckdb_array_vector_get_child(byval vector as duckdb_vector) as duckdb_vector
+declare sub duckdb_slice_vector(byval vector as duckdb_vector, byval sel as duckdb_selection_vector, byval len as idx_t)
+declare sub duckdb_vector_copy_sel(byval src as duckdb_vector, byval dst as duckdb_vector, byval sel as duckdb_selection_vector, byval src_count as idx_t, byval src_offset as idx_t, byval dst_offset as idx_t)
+declare sub duckdb_vector_reference_value(byval vector as duckdb_vector, byval value as duckdb_value)
+declare sub duckdb_vector_reference_vector(byval to_vector as duckdb_vector, byval from_vector as duckdb_vector)
 declare function duckdb_validity_row_is_valid(byval validity as ulongint ptr, byval row as idx_t) as bool
 declare sub duckdb_validity_set_row_validity(byval validity as ulongint ptr, byval row as idx_t, byval valid as bool)
 declare sub duckdb_validity_set_row_invalid(byval validity as ulongint ptr, byval row as idx_t)
 declare sub duckdb_validity_set_row_valid(byval validity as ulongint ptr, byval row as idx_t)
 declare function duckdb_create_scalar_function() as duckdb_scalar_function
 declare sub duckdb_destroy_scalar_function(byval scalar_function as duckdb_scalar_function ptr)
-declare sub duckdb_scalar_function_set_name(byval scalar_function as duckdb_scalar_function, byval name_ as const zstring ptr)
-declare sub duckdb_scalar_function_set_varargs(byval scalar_function as duckdb_scalar_function, byval type_ as duckdb_logical_type)
+declare sub duckdb_scalar_function_set_name(byval scalar_function as duckdb_scalar_function, byval name as const zstring ptr)
+declare sub duckdb_scalar_function_set_varargs(byval scalar_function as duckdb_scalar_function, byval type as duckdb_logical_type)
 declare sub duckdb_scalar_function_set_special_handling(byval scalar_function as duckdb_scalar_function)
 declare sub duckdb_scalar_function_set_volatile(byval scalar_function as duckdb_scalar_function)
-declare sub duckdb_scalar_function_add_parameter(byval scalar_function as duckdb_scalar_function, byval type_ as duckdb_logical_type)
-declare sub duckdb_scalar_function_set_return_type(byval scalar_function as duckdb_scalar_function, byval type_ as duckdb_logical_type)
+declare sub duckdb_scalar_function_add_parameter(byval scalar_function as duckdb_scalar_function, byval type as duckdb_logical_type)
+declare sub duckdb_scalar_function_set_return_type(byval scalar_function as duckdb_scalar_function, byval type as duckdb_logical_type)
 declare sub duckdb_scalar_function_set_extra_info(byval scalar_function as duckdb_scalar_function, byval extra_info as any ptr, byval destroy as duckdb_delete_callback_t)
+declare sub duckdb_scalar_function_set_bind(byval scalar_function as duckdb_scalar_function, byval bind as duckdb_scalar_function_bind_t)
+declare sub duckdb_scalar_function_set_bind_data(byval info as duckdb_bind_info, byval bind_data as any ptr, byval destroy as duckdb_delete_callback_t)
+declare sub duckdb_scalar_function_set_bind_data_copy(byval info as duckdb_bind_info, byval copy as duckdb_copy_callback_t)
+declare sub duckdb_scalar_function_bind_set_error(byval info as duckdb_bind_info, byval error as const zstring ptr)
 declare sub duckdb_scalar_function_set_function(byval scalar_function as duckdb_scalar_function, byval function as duckdb_scalar_function_t)
 declare function duckdb_register_scalar_function(byval con as duckdb_connection, byval scalar_function as duckdb_scalar_function) as duckdb_state
 declare function duckdb_scalar_function_get_extra_info(byval info as duckdb_function_info) as any ptr
-declare sub duckdb_scalar_function_set_error(byval info as duckdb_function_info, byval error_ as const zstring ptr)
-declare function duckdb_create_scalar_function_set(byval name_ as const zstring ptr) as duckdb_scalar_function_set
+declare function duckdb_scalar_function_bind_get_extra_info(byval info as duckdb_bind_info) as any ptr
+declare function duckdb_scalar_function_get_bind_data(byval info as duckdb_function_info) as any ptr
+declare sub duckdb_scalar_function_get_client_context(byval info as duckdb_bind_info, byval out_context as duckdb_client_context ptr)
+declare sub duckdb_scalar_function_set_error(byval info as duckdb_function_info, byval error as const zstring ptr)
+declare function duckdb_create_scalar_function_set(byval name as const zstring ptr) as duckdb_scalar_function_set
 declare sub duckdb_destroy_scalar_function_set(byval scalar_function_set as duckdb_scalar_function_set ptr)
 declare function duckdb_add_scalar_function_to_set(byval set as duckdb_scalar_function_set, byval function as duckdb_scalar_function) as duckdb_state
 declare function duckdb_register_scalar_function_set(byval con as duckdb_connection, byval set as duckdb_scalar_function_set) as duckdb_state
+declare function duckdb_scalar_function_bind_get_argument_count(byval info as duckdb_bind_info) as idx_t
+declare function duckdb_scalar_function_bind_get_argument(byval info as duckdb_bind_info, byval index as idx_t) as duckdb_expression
+declare function duckdb_create_selection_vector(byval size as idx_t) as duckdb_selection_vector
+declare sub duckdb_destroy_selection_vector(byval sel as duckdb_selection_vector)
+declare function duckdb_selection_vector_get_data_ptr(byval sel as duckdb_selection_vector) as sel_t ptr
 declare function duckdb_create_aggregate_function() as duckdb_aggregate_function
 declare sub duckdb_destroy_aggregate_function(byval aggregate_function as duckdb_aggregate_function ptr)
-declare sub duckdb_aggregate_function_set_name(byval aggregate_function as duckdb_aggregate_function, byval name_ as const zstring ptr)
-declare sub duckdb_aggregate_function_add_parameter(byval aggregate_function as duckdb_aggregate_function, byval type_ as duckdb_logical_type)
-declare sub duckdb_aggregate_function_set_return_type(byval aggregate_function as duckdb_aggregate_function, byval type_ as duckdb_logical_type)
+declare sub duckdb_aggregate_function_set_name(byval aggregate_function as duckdb_aggregate_function, byval name as const zstring ptr)
+declare sub duckdb_aggregate_function_add_parameter(byval aggregate_function as duckdb_aggregate_function, byval type as duckdb_logical_type)
+declare sub duckdb_aggregate_function_set_return_type(byval aggregate_function as duckdb_aggregate_function, byval type as duckdb_logical_type)
 declare sub duckdb_aggregate_function_set_functions(byval aggregate_function as duckdb_aggregate_function, byval state_size as duckdb_aggregate_state_size, byval state_init as duckdb_aggregate_init_t, byval update as duckdb_aggregate_update_t, byval combine as duckdb_aggregate_combine_t, byval finalize as duckdb_aggregate_finalize_t)
 declare sub duckdb_aggregate_function_set_destructor(byval aggregate_function as duckdb_aggregate_function, byval destroy as duckdb_aggregate_destroy_t)
 declare function duckdb_register_aggregate_function(byval con as duckdb_connection, byval aggregate_function as duckdb_aggregate_function) as duckdb_state
 declare sub duckdb_aggregate_function_set_special_handling(byval aggregate_function as duckdb_aggregate_function)
 declare sub duckdb_aggregate_function_set_extra_info(byval aggregate_function as duckdb_aggregate_function, byval extra_info as any ptr, byval destroy as duckdb_delete_callback_t)
 declare function duckdb_aggregate_function_get_extra_info(byval info as duckdb_function_info) as any ptr
-declare sub duckdb_aggregate_function_set_error(byval info as duckdb_function_info, byval error_ as const zstring ptr)
-declare function duckdb_create_aggregate_function_set(byval name_ as const zstring ptr) as duckdb_aggregate_function_set
+declare sub duckdb_aggregate_function_set_error(byval info as duckdb_function_info, byval error as const zstring ptr)
+declare function duckdb_create_aggregate_function_set(byval name as const zstring ptr) as duckdb_aggregate_function_set
 declare sub duckdb_destroy_aggregate_function_set(byval aggregate_function_set as duckdb_aggregate_function_set ptr)
 declare function duckdb_add_aggregate_function_to_set(byval set as duckdb_aggregate_function_set, byval function as duckdb_aggregate_function) as duckdb_state
 declare function duckdb_register_aggregate_function_set(byval con as duckdb_connection, byval set as duckdb_aggregate_function_set) as duckdb_state
 declare function duckdb_create_table_function() as duckdb_table_function
 declare sub duckdb_destroy_table_function(byval table_function as duckdb_table_function ptr)
-declare sub duckdb_table_function_set_name(byval table_function as duckdb_table_function, byval name_ as const zstring ptr)
-declare sub duckdb_table_function_add_parameter(byval table_function as duckdb_table_function, byval type_ as duckdb_logical_type)
-declare sub duckdb_table_function_add_named_parameter(byval table_function as duckdb_table_function, byval name_ as const zstring ptr, byval type_ as duckdb_logical_type)
+declare sub duckdb_table_function_set_name(byval table_function as duckdb_table_function, byval name as const zstring ptr)
+declare sub duckdb_table_function_add_parameter(byval table_function as duckdb_table_function, byval type as duckdb_logical_type)
+declare sub duckdb_table_function_add_named_parameter(byval table_function as duckdb_table_function, byval name as const zstring ptr, byval type as duckdb_logical_type)
 declare sub duckdb_table_function_set_extra_info(byval table_function as duckdb_table_function, byval extra_info as any ptr, byval destroy as duckdb_delete_callback_t)
 declare sub duckdb_table_function_set_bind(byval table_function as duckdb_table_function, byval bind as duckdb_table_function_bind_t)
 declare sub duckdb_table_function_set_init(byval table_function as duckdb_table_function, byval init as duckdb_table_function_init_t)
@@ -750,44 +899,51 @@ declare sub duckdb_table_function_set_function(byval table_function as duckdb_ta
 declare sub duckdb_table_function_supports_projection_pushdown(byval table_function as duckdb_table_function, byval pushdown as bool)
 declare function duckdb_register_table_function(byval con as duckdb_connection, byval function as duckdb_table_function) as duckdb_state
 declare function duckdb_bind_get_extra_info(byval info as duckdb_bind_info) as any ptr
-declare sub duckdb_bind_add_result_column(byval info as duckdb_bind_info, byval name_ as const zstring ptr, byval type_ as duckdb_logical_type)
+declare sub duckdb_table_function_get_client_context(byval info as duckdb_bind_info, byval out_context as duckdb_client_context ptr)
+declare sub duckdb_bind_add_result_column(byval info as duckdb_bind_info, byval name as const zstring ptr, byval type as duckdb_logical_type)
 declare function duckdb_bind_get_parameter_count(byval info as duckdb_bind_info) as idx_t
 declare function duckdb_bind_get_parameter(byval info as duckdb_bind_info, byval index as idx_t) as duckdb_value
-declare function duckdb_bind_get_named_parameter(byval info as duckdb_bind_info, byval name_ as const zstring ptr) as duckdb_value
+declare function duckdb_bind_get_named_parameter(byval info as duckdb_bind_info, byval name as const zstring ptr) as duckdb_value
 declare sub duckdb_bind_set_bind_data(byval info as duckdb_bind_info, byval bind_data as any ptr, byval destroy as duckdb_delete_callback_t)
 declare sub duckdb_bind_set_cardinality(byval info as duckdb_bind_info, byval cardinality as idx_t, byval is_exact as bool)
-declare sub duckdb_bind_set_error(byval info as duckdb_bind_info, byval error_ as const zstring ptr)
+declare sub duckdb_bind_set_error(byval info as duckdb_bind_info, byval error as const zstring ptr)
 declare function duckdb_init_get_extra_info(byval info as duckdb_init_info) as any ptr
 declare function duckdb_init_get_bind_data(byval info as duckdb_init_info) as any ptr
 declare sub duckdb_init_set_init_data(byval info as duckdb_init_info, byval init_data as any ptr, byval destroy as duckdb_delete_callback_t)
 declare function duckdb_init_get_column_count(byval info as duckdb_init_info) as idx_t
 declare function duckdb_init_get_column_index(byval info as duckdb_init_info, byval column_index as idx_t) as idx_t
 declare sub duckdb_init_set_max_threads(byval info as duckdb_init_info, byval max_threads as idx_t)
-declare sub duckdb_init_set_error(byval info as duckdb_init_info, byval error_ as const zstring ptr)
+declare sub duckdb_init_set_error(byval info as duckdb_init_info, byval error as const zstring ptr)
 declare function duckdb_function_get_extra_info(byval info as duckdb_function_info) as any ptr
 declare function duckdb_function_get_bind_data(byval info as duckdb_function_info) as any ptr
 declare function duckdb_function_get_init_data(byval info as duckdb_function_info) as any ptr
 declare function duckdb_function_get_local_init_data(byval info as duckdb_function_info) as any ptr
-declare sub duckdb_function_set_error(byval info as duckdb_function_info, byval error_ as const zstring ptr)
+declare sub duckdb_function_set_error(byval info as duckdb_function_info, byval error as const zstring ptr)
 declare sub duckdb_add_replacement_scan(byval db as duckdb_database, byval replacement as duckdb_replacement_callback_t, byval extra_data as any ptr, byval delete_callback as duckdb_delete_callback_t)
 declare sub duckdb_replacement_scan_set_function_name(byval info as duckdb_replacement_scan_info, byval function_name as const zstring ptr)
 declare sub duckdb_replacement_scan_add_parameter(byval info as duckdb_replacement_scan_info, byval parameter as duckdb_value)
-declare sub duckdb_replacement_scan_set_error(byval info as duckdb_replacement_scan_info, byval error_ as const zstring ptr)
+declare sub duckdb_replacement_scan_set_error(byval info as duckdb_replacement_scan_info, byval error as const zstring ptr)
 declare function duckdb_get_profiling_info(byval connection as duckdb_connection) as duckdb_profiling_info
 declare function duckdb_profiling_info_get_value(byval info as duckdb_profiling_info, byval key as const zstring ptr) as duckdb_value
 declare function duckdb_profiling_info_get_metrics(byval info as duckdb_profiling_info) as duckdb_value
 declare function duckdb_profiling_info_get_child_count(byval info as duckdb_profiling_info) as idx_t
 declare function duckdb_profiling_info_get_child(byval info as duckdb_profiling_info, byval index as idx_t) as duckdb_profiling_info
 declare function duckdb_appender_create(byval connection as duckdb_connection, byval schema as const zstring ptr, byval table as const zstring ptr, byval out_appender as duckdb_appender ptr) as duckdb_state
+declare function duckdb_appender_create_ext(byval connection as duckdb_connection, byval catalog as const zstring ptr, byval schema as const zstring ptr, byval table as const zstring ptr, byval out_appender as duckdb_appender ptr) as duckdb_state
+declare function duckdb_appender_create_query(byval connection as duckdb_connection, byval query as const zstring ptr, byval column_count as idx_t, byval types as duckdb_logical_type ptr, byval table_name as const zstring ptr, byval column_names as const zstring ptr ptr, byval out_appender as duckdb_appender ptr) as duckdb_state
 declare function duckdb_appender_column_count(byval appender as duckdb_appender) as idx_t
 declare function duckdb_appender_column_type(byval appender as duckdb_appender, byval col_idx as idx_t) as duckdb_logical_type
 declare function duckdb_appender_error(byval appender as duckdb_appender) as const zstring ptr
+declare function duckdb_appender_error_data(byval appender as duckdb_appender) as duckdb_error_data
 declare function duckdb_appender_flush(byval appender as duckdb_appender) as duckdb_state
 declare function duckdb_appender_close(byval appender as duckdb_appender) as duckdb_state
 declare function duckdb_appender_destroy(byval appender as duckdb_appender ptr) as duckdb_state
+declare function duckdb_appender_add_column(byval appender as duckdb_appender, byval name as const zstring ptr) as duckdb_state
+declare function duckdb_appender_clear_columns(byval appender as duckdb_appender) as duckdb_state
 declare function duckdb_appender_begin_row(byval appender as duckdb_appender) as duckdb_state
 declare function duckdb_appender_end_row(byval appender as duckdb_appender) as duckdb_state
 declare function duckdb_append_default(byval appender as duckdb_appender) as duckdb_state
+declare function duckdb_append_default_to_chunk(byval appender as duckdb_appender, byval chunk as duckdb_data_chunk, byval col as idx_t, byval row as idx_t) as duckdb_state
 declare function duckdb_append_bool(byval appender as duckdb_appender, byval value as bool) as duckdb_state
 declare function duckdb_append_int8(byval appender as duckdb_appender, byval value as byte) as duckdb_state
 declare function duckdb_append_int16(byval appender as duckdb_appender, byval value as short) as duckdb_state
@@ -805,21 +961,29 @@ declare function duckdb_append_date(byval appender as duckdb_appender, byval val
 declare function duckdb_append_time(byval appender as duckdb_appender, byval value as duckdb_time) as duckdb_state
 declare function duckdb_append_timestamp(byval appender as duckdb_appender, byval value as duckdb_timestamp) as duckdb_state
 declare function duckdb_append_interval(byval appender as duckdb_appender, byval value as duckdb_interval) as duckdb_state
-declare function duckdb_append_varchar(byval appender as duckdb_appender, byval val_ as const zstring ptr) as duckdb_state
-declare function duckdb_append_varchar_length(byval appender as duckdb_appender, byval val_ as const zstring ptr, byval length as idx_t) as duckdb_state
-declare function duckdb_append_blob(byval appender as duckdb_appender, byval data_ as const any ptr, byval length as idx_t) as duckdb_state
+Declare Function duckdb_append_varchar(ByVal appender As duckdb_appender, ByVal Val As Const ZString Ptr) As duckdb_state
+declare function duckdb_append_varchar_length(byval appender as duckdb_appender, byval val as const zstring ptr, byval length as idx_t) as duckdb_state
+declare function duckdb_append_blob(byval appender as duckdb_appender, byval data as const any ptr, byval length as idx_t) as duckdb_state
 declare function duckdb_append_null(byval appender as duckdb_appender) as duckdb_state
+declare function duckdb_append_value(byval appender as duckdb_appender, byval value as duckdb_value) as duckdb_state
 declare function duckdb_append_data_chunk(byval appender as duckdb_appender, byval chunk as duckdb_data_chunk) as duckdb_state
-declare function duckdb_table_description_create(byval connection as duckdb_connection, byval schema as const zstring ptr, byval table as const zstring ptr, byval out_ as duckdb_table_description ptr) as duckdb_state
+declare function duckdb_table_description_create(byval connection as duckdb_connection, byval schema as const zstring ptr, byval table as const zstring ptr, byval out as duckdb_table_description ptr) as duckdb_state
+declare function duckdb_table_description_create_ext(byval connection as duckdb_connection, byval catalog as const zstring ptr, byval schema as const zstring ptr, byval table as const zstring ptr, byval out as duckdb_table_description ptr) as duckdb_state
 declare sub duckdb_table_description_destroy(byval table_description as duckdb_table_description ptr)
 declare function duckdb_table_description_error(byval table_description as duckdb_table_description) as const zstring ptr
-declare function duckdb_column_has_default(byval table_description as duckdb_table_description, byval index as idx_t, byval out_ as bool ptr) as duckdb_state
+declare function duckdb_column_has_default(byval table_description as duckdb_table_description, byval index as idx_t, byval out as bool ptr) as duckdb_state
+declare function duckdb_table_description_get_column_name(byval table_description as duckdb_table_description, byval index as idx_t) as zstring ptr
+Declare Function duckdb_to_arrow_schema(ByVal arrow_options As duckdb_arrow_options, ByVal types As duckdb_logical_type Ptr, ByVal names As Const ZString Ptr Ptr, ByVal column_count As idx_t, ByVal out_schema As ArrowSchema Ptr) As duckdb_error_data
+declare function duckdb_data_chunk_to_arrow(byval arrow_options as duckdb_arrow_options, byval chunk as duckdb_data_chunk, byval out_arrow_array as ArrowArray ptr) as duckdb_error_data
+declare function duckdb_schema_from_arrow(byval connection as duckdb_connection, byval schema as ArrowSchema ptr, byval out_types as duckdb_arrow_converted_schema ptr) as duckdb_error_data
+declare function duckdb_data_chunk_from_arrow(byval connection as duckdb_connection, byval arrow_array as ArrowArray ptr, byval converted_schema as duckdb_arrow_converted_schema, byval out_chunk as duckdb_data_chunk ptr) as duckdb_error_data
+declare sub duckdb_destroy_arrow_converted_schema(byval arrow_converted_schema as duckdb_arrow_converted_schema ptr)
 declare function duckdb_query_arrow(byval connection as duckdb_connection, byval query as const zstring ptr, byval out_result as duckdb_arrow ptr) as duckdb_state
 declare function duckdb_query_arrow_schema(byval result as duckdb_arrow, byval out_schema as duckdb_arrow_schema ptr) as duckdb_state
 declare function duckdb_prepared_arrow_schema(byval prepared as duckdb_prepared_statement, byval out_schema as duckdb_arrow_schema ptr) as duckdb_state
 declare sub duckdb_result_arrow_array(byval result as duckdb_result, byval chunk as duckdb_data_chunk, byval out_array as duckdb_arrow_array ptr)
 declare function duckdb_query_arrow_array(byval result as duckdb_arrow, byval out_array as duckdb_arrow_array ptr) as duckdb_state
-declare function duckdb_arrow_column_count(byval result as duckdb_arrow) as idx_t
+Declare Function duckdb_arrow_column_count(ByVal result As duckdb_arrow) As idx_t
 declare function duckdb_arrow_row_count(byval result as duckdb_arrow) as idx_t
 declare function duckdb_arrow_rows_changed(byval result as duckdb_arrow) as idx_t
 declare function duckdb_query_arrow_error(byval result as duckdb_arrow) as const zstring ptr
@@ -846,10 +1010,14 @@ declare sub duckdb_cast_function_set_function(byval cast_function as duckdb_cast
 declare sub duckdb_cast_function_set_extra_info(byval cast_function as duckdb_cast_function, byval extra_info as any ptr, byval destroy as duckdb_delete_callback_t)
 declare function duckdb_cast_function_get_extra_info(byval info as duckdb_function_info) as any ptr
 declare function duckdb_cast_function_get_cast_mode(byval info as duckdb_function_info) as duckdb_cast_mode
-declare sub duckdb_cast_function_set_error(byval info as duckdb_function_info, byval error_ as const zstring ptr)
-declare sub duckdb_cast_function_set_row_error(byval info as duckdb_function_info, byval error_ as const zstring ptr, byval row as idx_t, byval output as duckdb_vector)
+declare sub duckdb_cast_function_set_error(byval info as duckdb_function_info, byval error as const zstring ptr)
+declare sub duckdb_cast_function_set_row_error(byval info as duckdb_function_info, byval error as const zstring ptr, byval row as idx_t, byval output as duckdb_vector)
 declare function duckdb_register_cast_function(byval con as duckdb_connection, byval cast_function as duckdb_cast_function) as duckdb_state
 declare sub duckdb_destroy_cast_function(byval cast_function as duckdb_cast_function ptr)
+declare sub duckdb_destroy_expression(byval expr as duckdb_expression ptr)
+declare function duckdb_expression_return_type(byval expr as duckdb_expression) as duckdb_logical_type
+declare function duckdb_expression_is_foldable(byval expr as duckdb_expression) as bool
+declare function duckdb_expression_fold(byval context as duckdb_client_context, byval expr as duckdb_expression, byval out_value as duckdb_value ptr) as duckdb_error_data
 
 end extern
 #endif
